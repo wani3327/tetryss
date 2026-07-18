@@ -237,7 +237,6 @@ export function hardDrop(state: GameState): number {
 
 export function softDrop(state: GameState): boolean {
   const dropped = move(state, 0, 1);
-  if (!dropped) lockPiece(state);
   return dropped;
 }
 
