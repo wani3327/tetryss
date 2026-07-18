@@ -20,17 +20,34 @@ body {
 }
 
 .hud,
-.next {
+.next,
+.hold {
   display: grid;
   gap: 12px;
   padding-top: 8px;
 }
 
 .hud div,
-.next {
+.next,
+.hold {
   border: 1px solid #5c4b42;
   padding: 10px;
   background: #211f1d;
+}
+
+.hold {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+#board {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+}
+
+.next {
+  grid-column: 3;
+  grid-row: 1 / span 2;
 }
 
 span {
@@ -54,7 +71,22 @@ canvas {
 
 #queue {
   display: grid;
-  grid-template-columns: repeat(2, 18px);
-  gap: 6px;
+  gap: 8px;
   margin-top: 10px;
+}
+
+#hold {
+  margin-top: 10px;
+}
+
+.piece-preview {
+  display: block;
+  width: 72px;
+  height: 72px;
+  background: #151311;
+  border: 1px solid #40342e;
+}
+
+.piece-preview.empty {
+  opacity: 0.6;
 }

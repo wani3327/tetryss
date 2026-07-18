@@ -6,6 +6,7 @@ import {
   PieceKind,
   createGame,
   getBlocks,
+  getPreviewBlocks,
   ghostPiece,
   hardDrop,
   hold,
@@ -19,6 +20,7 @@ const canvas = requiredNode(document.querySelector<HTMLCanvasElement>("#board"),
 const timer = requiredNode(document.querySelector<HTMLElement>("#timer"), "timer");
 const statusNode = requiredNode(document.querySelector<HTMLElement>("#status"), "status");
 const queueNode = requiredNode(document.querySelector<HTMLElement>("#queue"), "queue");
+const holdNode = requiredNode(document.querySelector<HTMLElement>("#hold"), "hold");
 const context = requiredNode(canvas.getContext("2d"), "2d canvas context");
 
 const colors: Record<Exclude<Cell, null>, string> = {
@@ -100,6 +102,7 @@ function render(): void {
   timer.textContent = (state.elapsedMs / 1000).toFixed(2);
   statusNode.textContent = state.status === "game-over" ? "Game over" : state.status === "cleared" ? "Cleared" : "Playing";
   queueNode.replaceChildren(...state.queue.slice(0, 5).map(renderQueuePiece));
+  holdNode.replaceChildren(state.hold === null ? renderEmptyPreview() : renderQueuePiece(state.hold));
 }
 
 function drawCell(x: number, visibleY: number, cell: Cell, size: number, alpha: number): void {
@@ -142,11 +145,33 @@ function drawSinner(size: number): void {
 }
 
 function renderQueuePiece(kind: PieceKind): HTMLElement {
+  const preview = document.createElement("canvas");
+  preview.width = 72;
+  preview.height = 72;
+  preview.className = "piece-preview";
+  preview.title = kind;
+
+  const previewContext = requiredNode(preview.getContext("2d"), "preview context");
+  const blocks = getPreviewBlocks(kind);
+  const minX = Math.min(...blocks.map(([x]) => x));
+  const maxX = Math.max(...blocks.map(([x]) => x));
+  const minY = Math.min(...blocks.map(([, y]) => y));
+  const maxY = Math.max(...blocks.map(([, y]) => y));
+  const blockSize = 16;
+  const offsetX = (preview.width - (maxX - minX + 1) * blockSize) / 2 - minX * blockSize;
+  const offsetY = (preview.height - (maxY - minY + 1) * blockSize) / 2 - minY * blockSize;
+
+  for (const [x, y] of blocks) {
+    previewContext.fillStyle = colors[kind];
+    previewContext.fillRect(offsetX + x * blockSize + 1, offsetY + y * blockSize + 1, blockSize - 2, blockSize - 2);
+  }
+
+  return preview;
+}
+
+function renderEmptyPreview(): HTMLElement {
   const node = document.createElement("div");
-  node.style.width = "18px";
-  node.style.height = "18px";
-  node.style.background = colors[kind];
-  node.title = kind;
+  node.className = "piece-preview empty";
   return node;
 }
 

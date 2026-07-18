@@ -184,6 +184,10 @@ export function getBlocks(piece: ActivePiece): Array<readonly [number, number]> 
   return SHAPES[piece.kind][piece.rotation]!.map(([dx, dy]) => [piece.x + dx, piece.y + dy] as const);
 }
 
+export function getPreviewBlocks(kind: PieceKind): Array<readonly [number, number]> {
+  return SHAPES[kind][0]!.map(([x, y]) => [x, y] as const);
+}
+
 export function canPlace(board: Cell[][], piece: ActivePiece): boolean {
   return getBlocks(piece).every(([x, y]) => {
     if (x < 0 || x >= BOARD_WIDTH || y >= TOTAL_HEIGHT) return false;
