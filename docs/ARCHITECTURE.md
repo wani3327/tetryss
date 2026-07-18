@@ -1,0 +1,3 @@
+- Code in TypeScript
+- Targetted to static Github pages
+  - Github Action compiles TS into HTML/CSS/JS static page

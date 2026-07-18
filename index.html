@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tetris Cheese Race</title>
+    <link rel="stylesheet" href="./src/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hud">
+        <div>
+          <span>Time</span>
+          <strong id="timer">0.00</strong>
+        </div>
+        <div>
+          <span>Status</span>
+          <strong id="status">Playing</strong>
+        </div>
+      </section>
+      <canvas id="board" width="300" height="600" aria-label="Tetris board"></canvas>
+      <aside class="next">
+        <span>Next</span>
+        <div id="queue"></div>
+      </aside>
+    </main>
+    <script type="module" src="./dist/main.js"></script>
+  </body>
+</html>

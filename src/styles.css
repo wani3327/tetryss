@@ -1,0 +1,60 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  background: #171615;
+  color: #f2eee8;
+  font-family: system-ui, sans-serif;
+}
+
+.shell {
+  display: grid;
+  grid-template-columns: 120px 300px 120px;
+  gap: 16px;
+  align-items: start;
+}
+
+.hud,
+.next {
+  display: grid;
+  gap: 12px;
+  padding-top: 8px;
+}
+
+.hud div,
+.next {
+  border: 1px solid #5c4b42;
+  padding: 10px;
+  background: #211f1d;
+}
+
+span {
+  display: block;
+  color: #b9aaa1;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+strong {
+  font-size: 18px;
+}
+
+canvas {
+  display: block;
+  width: 300px;
+  height: 600px;
+  border: 2px solid #8b6a55;
+  background: #0e0d0c;
+}
+
+#queue {
+  display: grid;
+  grid-template-columns: repeat(2, 18px);
+  gap: 6px;
+  margin-top: 10px;
+}
