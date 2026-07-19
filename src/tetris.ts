@@ -279,7 +279,7 @@ export class GameState {
   }
 
   blinkSinnerUp(): boolean {
-    const blinkDistance = 3;
+    const blinkDistance = 4;
     for (let distance = blinkDistance; distance >= 1; distance -= 1) {
       const targetY = this.sinner.y - distance;
       if (this.sinnerCanOccupy(this.sinner.x, targetY) && !this.activeOccupies(this.sinner.x, targetY)) {
