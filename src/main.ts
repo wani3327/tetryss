@@ -1,10 +1,5 @@
 import {
-  createGame,
-  hardDrop,
-  hold,
-  move,
-  rotate,
-  tick,
+  GameState,
 } from "./tetris.js";
 import { render } from "./render.js";
 
@@ -12,7 +7,7 @@ const DAS = 133;
 const ARR = 10;
 const SDF = 0;
 
-const state = createGame();
+const state = new GameState();
 let lastFrame = performance.now();
 
 let inputState: {
@@ -32,20 +27,20 @@ window.addEventListener("keydown", (event) => {
       handleMove(0);
       break;
     case " ":
-      hardDrop(state);
+      state.hardDrop();
       break;
     case "z":
     case "Z":
-      rotate(state, -1);
+      state.rotate(-1);
       break;
     case "x":
     case "X":
     case "ArrowUp":
-      rotate(state, 1);
+      state.rotate(1);
       break;
     case "c":
     case "C":
-      hold(state);
+      state.hold();
       break;
     default:
       return;
@@ -53,20 +48,20 @@ window.addEventListener("keydown", (event) => {
   event.preventDefault();
 });
 
-window.addEventListener("keyup", (event) => {
+window.addEventListener("keyup", (_) => {
   inputState = {key: null, when: lastFrame, state: 0};
 });
 
 function handleMove(now: number) {
   switch (inputState.key) {
     case "ArrowLeft":
-      foo(() => move(state, -1, 0), DAS, ARR);
+      foo(() => state.move(-1, 0), DAS, ARR);
       break;
     case "ArrowRight":
-      foo(() => move(state, 1, 0), DAS, ARR);
+      foo(() => state.move(1, 0), DAS, ARR);
       break;
     case "ArrowDown":
-      foo(() => move(state, 0, 1), 0, SDF);
+      foo(() => state.move(0, 1), 0, SDF);
       break;
     default:
       return;
@@ -95,7 +90,7 @@ function handleMove(now: number) {
 
 function frame(now: number): void {
   handleMove(now);
-  tick(state, now - lastFrame, now);
+  state.tick(now - lastFrame, now);
   lastFrame = now;
   render(state);
   requestAnimationFrame(frame);

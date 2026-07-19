@@ -29,11 +29,11 @@ export interface RandomSource {
   next(): number;
 }
 
-export interface GameState {
+export class GameState {
   board: Cell[][];
   active: ActivePiece;
   sinner: Sinner;
-  hold: PieceKind | null;
+  holdPiece: PieceKind | null;
   canHold: boolean;
   queue: PieceKind[];
   bag: PieceKind[];
@@ -45,6 +45,270 @@ export interface GameState {
   fallAccumulatorMs: number;
   lockAccumulatorMs: number;
   rng: RandomSource;
+
+  constructor(seed = Date.now()) {
+    this.rng = seededRng(seed);
+    this.board = createCheeseBoard(this.rng);
+    this.sinner = spawnSinner();
+    this.holdPiece = null;
+    this.canHold = true;
+    this.queue = [];
+    this.bag = [];
+    this.status = "playing";
+    this.startedAt = 0;
+    this.elapsedMs = 0;
+    this.lockDelayMs = 500;
+    this.gravityMs = 900;
+    this.fallAccumulatorMs = 0;
+    this.lockAccumulatorMs = 0;
+    this.fillQueue();
+    this.active = spawnPiece(this.drawNext());
+  }
+
+  fillQueue(): void {
+    while (this.queue.length < 5) {
+      if (this.bag.length === 0) this.bag = shuffledBag(this.rng);
+      const next = this.bag.shift();
+      if (next) this.queue.push(next);
+    }
+  }
+
+  drawNext(): PieceKind {
+    this.fillQueue();
+    const next = this.queue.shift();
+    if (!next) throw new Error("piece queue unexpectedly empty");
+    this.fillQueue();
+    return next;
+  }
+
+
+  move(dx: number, dy: number): boolean {
+    if (this.status !== "playing") return false;
+    const moved = { ...this.active, x: this.active.x + dx, y: this.active.y + dy };
+    if (!canPlace(this.board, moved)) return false;
+    this.active = moved;
+    if (dy === 0) this.lockAccumulatorMs = 0;
+    return true;
+  }
+
+  rotate(direction: -1 | 1): boolean {
+    if (this.status !== "playing") return false;
+    const from = this.active.rotation;
+    const to = wrapRotation(from + direction);
+    if (this.active.kind === "O") {
+      this.active = { ...this.active, rotation: to };
+      return true;
+    }
+    const kicks = getKicks(this.active.kind, from, to);
+    for (const [kx, ky] of kicks) {
+      const candidate = { ...this.active, rotation: to, x: this.active.x + kx, y: this.active.y - ky };
+      if (canPlace(this.board, candidate)) {
+        this.active = candidate;
+        this.lockAccumulatorMs = 0;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  hardDrop(): number {
+    if (this.status !== "playing") return 0;
+    let distance = 0;
+    while (this.move(0, 1)) {
+      distance += 1;
+    }
+    this.lockPiece();
+    return distance;
+  }
+
+  hold(): boolean {
+    if (this.status !== "playing" || !this.canHold) return false;
+    const current = this.active.kind;
+    if (this.holdPiece === null) {
+      this.active = spawnPiece(this.drawNext());
+    } else {
+      this.active = spawnPiece(this.holdPiece);
+    }
+    this.holdPiece = current;
+    this.canHold = false;
+    this.lockAccumulatorMs = 0;
+    return canPlace(this.board, this.active);
+  }
+
+  tick(deltaMs: number, nowMs = performance.now()): void {
+    if (this.status !== "playing") return;
+    if (this.startedAt === 0) this.startedAt = nowMs;
+    this.elapsedMs = nowMs - this.startedAt;
+    this.fallAccumulatorMs += deltaMs;
+
+    while (this.fallAccumulatorMs >= this.gravityMs && this.status === "playing") {
+      this.fallAccumulatorMs -= this.gravityMs;
+      if (!this.move(0, 1)) {
+        this.lockAccumulatorMs += this.gravityMs;
+        if (this.lockAccumulatorMs >= this.lockDelayMs) {
+          this.lockPiece();
+        }
+        break;
+      }
+    }
+
+    this.updateSinner(deltaMs);
+    this.updateGravity();
+  }
+
+
+  updateSinner(deltaMs: number): void {
+    const sinner = this.sinner;
+    sinner.walkAccumulatorMs += deltaMs;
+    sinner.fallAccumulatorMs += deltaMs;
+    sinner.blinkCooldownMs = Math.max(0, sinner.blinkCooldownMs - deltaMs);
+
+    if (this.shouldBlink()) {
+      this.blinkSinnerUp();
+    }
+
+    if (sinner.y >= TOTAL_HEIGHT) {
+      this.status = "cleared";
+      return;
+    }
+
+    const fallIntervalMs = 120;
+    while (sinner.fallAccumulatorMs >= fallIntervalMs && this.status === "playing") {
+      sinner.fallAccumulatorMs -= fallIntervalMs;
+      if (this.sinnerCanOccupy(sinner.x, sinner.y + 1)) {
+        sinner.y += 1;
+        if (sinner.y >= TOTAL_HEIGHT) {
+          this.status = "cleared";
+          return;
+        }
+      } else {
+        break;
+      }
+    }
+
+    if (!this.sinnerIsGrounded() || sinner.walkAccumulatorMs < 260) return;
+    sinner.walkAccumulatorMs = 0;
+
+    if (!this.tryWalkSinner(sinner.direction)) {
+      sinner.direction = sinner.direction === 1 ? -1 : 1;
+      this.tryWalkSinner(sinner.direction);
+    }
+  }
+
+  lockPiece(): void {
+    if (this.status !== "playing") return;
+    if (this.activeOccupies(this.sinner.x, this.sinner.y)) {
+      this.blinkSinnerUp();
+    }
+    for (const [x, y] of getBlocks(this.active)) {
+      if (y < HIDDEN_ROWS) {
+        this.status = "game-over";
+        return;
+      }
+      this.board[y]![x] = this.active.kind;
+    }
+    this.clearLines();
+    this.settleSinnerAfterBoardChange();
+    if (this.status !== "playing") return;
+    this.active = spawnPiece(this.drawNext());
+    this.canHold = true;
+    this.lockAccumulatorMs = 0;
+    this.fallAccumulatorMs = 0;
+    if (!canPlace(this.board, this.active)) {
+      this.status = "game-over";
+    }
+  }
+
+  clearLines(): number {
+    const remaining = this.board.filter((row) => row.some((cell) => cell === null));
+    const cleared = TOTAL_HEIGHT - remaining.length;
+    for (let i = 0; i < cleared; i += 1) {
+      remaining.unshift(Array<Cell>(BOARD_WIDTH).fill(null));
+    }
+    this.board = remaining;
+    return cleared;
+  }
+
+
+  ghostPiece(): ActivePiece {
+    let ghost = { ...this.active };
+    while (canPlace(this.board, { ...ghost, y: ghost.y + 1 })) {
+      ghost = { ...ghost, y: ghost.y + 1 };
+    }
+    return ghost;
+  }
+
+
+  sinnerIsGrounded(): boolean {
+    return !this.sinnerCanOccupy(this.sinner.x, this.sinner.y + 1);
+  }
+
+  tryWalkSinner(direction: -1 | 1): boolean {
+    const { x, y } = this.sinner;
+    const nextX = x + direction;
+    if (this.sinnerCanOccupy(nextX, y) && !this.sinnerCanOccupy(nextX, y + 1)) {
+      this.sinner.x = nextX;
+      return true;
+    }
+
+    if (
+      !this.sinnerCanOccupy(nextX, y) &&
+      this.sinnerCanOccupy(nextX, y - 1) &&
+      !this.activeOccupies(nextX, y - 1)
+    ) {
+      this.sinner.x = nextX;
+      this.sinner.y = y - 1;
+      return true;
+    }
+
+    return false;
+  }
+
+  sinnerCanOccupy(x: number, y: number): boolean {
+    if (x < 0 || x >= BOARD_WIDTH) return false;
+    if (y >= TOTAL_HEIGHT) return true;
+    if (y < 0) return false;
+    return this.board[y]?.[x] === null;
+  }
+
+  shouldBlink(): boolean {
+    if (this.sinner.blinkCooldownMs > 0) return false;
+    const sinnerX = this.sinner.x;
+    const sinnerY = this.sinner.y;
+    return getBlocks(this.active).some(([x, y]) => x === sinnerX && y >= sinnerY - 1 && y <= sinnerY + 1);
+  }
+
+  blinkSinnerUp(): boolean {
+    const blinkDistance = 3;
+    for (let distance = blinkDistance; distance >= 1; distance -= 1) {
+      const targetY = this.sinner.y - distance;
+      if (this.sinnerCanOccupy(this.sinner.x, targetY) && !this.activeOccupies(this.sinner.x, targetY)) {
+        this.sinner.y = targetY;
+        this.sinner.blinkCooldownMs = 1200;
+        this.sinner.fallAccumulatorMs = 0;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  activeOccupies(x: number, y: number): boolean {
+    return getBlocks(this.active).some(([blockX, blockY]) => blockX === x && blockY === y);
+  }
+
+  settleSinnerAfterBoardChange(): void {
+    if (this.status !== "playing") return;
+    if (this.sinnerCanOccupy(this.sinner.x, this.sinner.y)) return;
+    if (this.blinkSinnerUp()) return;
+    this.status = "cleared";
+  }
+
+  updateGravity(): void {
+    const elapsedSeconds = this.elapsedMs / 1000;
+    this.gravityMs = Math.max(80, 900 - elapsedSeconds * 12);
+  }
+
+
 }
 
 const PIECES: PieceKind[] = ["I", "J", "L", "O", "S", "T", "Z"];
@@ -126,33 +390,7 @@ const I_KICKS: Record<string, ReadonlyArray<readonly [number, number]>> = {
   "0>3": [[0, 0], [-1, 0], [2, 0], [-1, -2], [2, 1]],
 };
 
-export function createGame(seed = Date.now()): GameState {
-  const rng = seededRng(seed);
-  const board = createCheeseBoard(rng);
-  const state: GameState = {
-    board,
-    active: { kind: "T", x: 3, y: 0, rotation: 0 },
-    sinner: spawnSinner(),
-    hold: null,
-    canHold: true,
-    queue: [],
-    bag: [],
-    status: "playing",
-    startedAt: 0,
-    elapsedMs: 0,
-    lockDelayMs: 500,
-    gravityMs: 900,
-    fallAccumulatorMs: 0,
-    lockAccumulatorMs: 0,
-    rng,
-  };
-  fillQueue(state);
-  state.active = spawnPiece(drawNext(state));
-  if (!canPlace(state.board, state.active)) {
-    state.status = "game-over";
-  }
-  return state;
-}
+
 
 export function createEmptyBoard(): Cell[][] {
   return Array.from({ length: TOTAL_HEIGHT }, () => Array<Cell>(BOARD_WIDTH).fill(null));
@@ -196,179 +434,13 @@ export function canPlace(board: Cell[][], piece: ActivePiece): boolean {
   });
 }
 
-export function move(state: GameState, dx: number, dy: number): boolean {
-  if (state.status !== "playing") return false;
-  const moved = { ...state.active, x: state.active.x + dx, y: state.active.y + dy };
-  if (!canPlace(state.board, moved)) return false;
-  state.active = moved;
-  if (dy === 0) state.lockAccumulatorMs = 0;
-  return true;
-}
-
-export function rotate(state: GameState, direction: -1 | 1): boolean {
-  if (state.status !== "playing") return false;
-  const from = state.active.rotation;
-  const to = wrapRotation(from + direction);
-  if (state.active.kind === "O") {
-    state.active = { ...state.active, rotation: to };
-    return true;
-  }
-  const kicks = getKicks(state.active.kind, from, to);
-  for (const [kx, ky] of kicks) {
-    const candidate = { ...state.active, rotation: to, x: state.active.x + kx, y: state.active.y - ky };
-    if (canPlace(state.board, candidate)) {
-      state.active = candidate;
-      state.lockAccumulatorMs = 0;
-      return true;
-    }
-  }
-  return false;
-}
-
-export function hardDrop(state: GameState): number {
-  if (state.status !== "playing") return 0;
-  let distance = 0;
-  while (move(state, 0, 1)) {
-    distance += 1;
-  }
-  lockPiece(state);
-  return distance;
-}
-
-export function tick(state: GameState, deltaMs: number, nowMs = performance.now()): void {
-  if (state.status !== "playing") return;
-  if (state.startedAt === 0) state.startedAt = nowMs;
-  state.elapsedMs = nowMs - state.startedAt;
-  state.fallAccumulatorMs += deltaMs;
-
-  while (state.fallAccumulatorMs >= state.gravityMs && state.status === "playing") {
-    state.fallAccumulatorMs -= state.gravityMs;
-    if (!move(state, 0, 1)) {
-      state.lockAccumulatorMs += state.gravityMs;
-      if (state.lockAccumulatorMs >= state.lockDelayMs) {
-        lockPiece(state);
-      }
-      break;
-    }
-  }
-
-  updateSinner(state, deltaMs);
-  updateGravity(state);
-}
-
-export function updateSinner(state: GameState, deltaMs: number): void {
-  const sinner = state.sinner;
-  sinner.walkAccumulatorMs += deltaMs;
-  sinner.fallAccumulatorMs += deltaMs;
-  sinner.blinkCooldownMs = Math.max(0, sinner.blinkCooldownMs - deltaMs);
-
-  if (shouldBlink(state)) {
-    blinkSinnerUp(state);
-  }
-
-  if (sinner.y >= TOTAL_HEIGHT) {
-    state.status = "cleared";
-    return;
-  }
-
-  const fallIntervalMs = 120;
-  while (sinner.fallAccumulatorMs >= fallIntervalMs && state.status === "playing") {
-    sinner.fallAccumulatorMs -= fallIntervalMs;
-    if (sinnerCanOccupy(state, sinner.x, sinner.y + 1)) {
-      sinner.y += 1;
-      if (sinner.y >= TOTAL_HEIGHT) {
-        state.status = "cleared";
-        return;
-      }
-    } else {
-      break;
-    }
-  }
-
-  if (!sinnerIsGrounded(state) || sinner.walkAccumulatorMs < 260) return;
-  sinner.walkAccumulatorMs = 0;
-
-  if (!tryWalkSinner(state, sinner.direction)) {
-    sinner.direction = sinner.direction === 1 ? -1 : 1;
-    tryWalkSinner(state, sinner.direction);
-  }
-}
-
-export function lockPiece(state: GameState): void {
-  if (state.status !== "playing") return;
-  if (activeOccupies(state, state.sinner.x, state.sinner.y)) {
-    blinkSinnerUp(state);
-  }
-  for (const [x, y] of getBlocks(state.active)) {
-    if (y < HIDDEN_ROWS) {
-      state.status = "game-over";
-      return;
-    }
-    state.board[y]![x] = state.active.kind;
-  }
-  clearLines(state);
-  settleSinnerAfterBoardChange(state);
-  if (state.status !== "playing") return;
-  state.active = spawnPiece(drawNext(state));
-  state.canHold = true;
-  state.lockAccumulatorMs = 0;
-  state.fallAccumulatorMs = 0;
-  if (!canPlace(state.board, state.active)) {
-    state.status = "game-over";
-  }
-}
-
-export function clearLines(state: GameState): number {
-  const remaining = state.board.filter((row) => row.some((cell) => cell === null));
-  const cleared = TOTAL_HEIGHT - remaining.length;
-  for (let i = 0; i < cleared; i += 1) {
-    remaining.unshift(Array<Cell>(BOARD_WIDTH).fill(null));
-  }
-  state.board = remaining;
-  return cleared;
-}
-
-export function hold(state: GameState): boolean {
-  if (state.status !== "playing" || !state.canHold) return false;
-  const current = state.active.kind;
-  if (state.hold === null) {
-    state.active = spawnPiece(drawNext(state));
-  } else {
-    state.active = spawnPiece(state.hold);
-  }
-  state.hold = current;
-  state.canHold = false;
-  state.lockAccumulatorMs = 0;
-  return canPlace(state.board, state.active);
-}
-
-export function ghostPiece(state: GameState): ActivePiece {
-  let ghost = { ...state.active };
-  while (canPlace(state.board, { ...ghost, y: ghost.y + 1 })) {
-    ghost = { ...ghost, y: ghost.y + 1 };
-  }
-  return ghost;
-}
 
 function spawnPiece(kind: PieceKind): ActivePiece {
   return { kind, x: SPAWN_X[kind], y: 0, rotation: 0 };
 }
 
-function drawNext(state: GameState): PieceKind {
-  fillQueue(state);
-  const next = state.queue.shift();
-  if (!next) throw new Error("piece queue unexpectedly empty");
-  fillQueue(state);
-  return next;
-}
 
-function fillQueue(state: GameState): void {
-  while (state.queue.length < 5) {
-    if (state.bag.length === 0) state.bag = shuffledBag(state.rng);
-    const next = state.bag.shift();
-    if (next) state.queue.push(next);
-  }
-}
+
 
 function shuffledBag(rng: RandomSource): PieceKind[] {
   const bag = [...PIECES];
@@ -388,75 +460,6 @@ function getKicks(kind: PieceKind, from: Rotation, to: Rotation): ReadonlyArray<
 
 function wrapRotation(value: number): Rotation {
   return (((value % 4) + 4) % 4) as Rotation;
-}
-
-function sinnerIsGrounded(state: GameState): boolean {
-  return !sinnerCanOccupy(state, state.sinner.x, state.sinner.y + 1);
-}
-
-function tryWalkSinner(state: GameState, direction: -1 | 1): boolean {
-  const { x, y } = state.sinner;
-  const nextX = x + direction;
-  if (sinnerCanOccupy(state, nextX, y) && !sinnerCanOccupy(state, nextX, y + 1)) {
-    state.sinner.x = nextX;
-    return true;
-  }
-
-  if (
-    !sinnerCanOccupy(state, nextX, y) &&
-    sinnerCanOccupy(state, nextX, y - 1) &&
-    !activeOccupies(state, nextX, y - 1)
-  ) {
-    state.sinner.x = nextX;
-    state.sinner.y = y - 1;
-    return true;
-  }
-
-  return false;
-}
-
-function sinnerCanOccupy(state: GameState, x: number, y: number): boolean {
-  if (x < 0 || x >= BOARD_WIDTH) return false;
-  if (y >= TOTAL_HEIGHT) return true;
-  if (y < 0) return false;
-  return state.board[y]?.[x] === null;
-}
-
-function shouldBlink(state: GameState): boolean {
-  if (state.sinner.blinkCooldownMs > 0) return false;
-  const sinnerX = state.sinner.x;
-  const sinnerY = state.sinner.y;
-  return getBlocks(state.active).some(([x, y]) => x === sinnerX && y >= sinnerY - 1 && y <= sinnerY + 1);
-}
-
-function blinkSinnerUp(state: GameState): boolean {
-  const blinkDistance = 3;
-  for (let distance = blinkDistance; distance >= 1; distance -= 1) {
-    const targetY = state.sinner.y - distance;
-    if (sinnerCanOccupy(state, state.sinner.x, targetY) && !activeOccupies(state, state.sinner.x, targetY)) {
-      state.sinner.y = targetY;
-      state.sinner.blinkCooldownMs = 1200;
-      state.sinner.fallAccumulatorMs = 0;
-      return true;
-    }
-  }
-  return false;
-}
-
-function activeOccupies(state: GameState, x: number, y: number): boolean {
-  return getBlocks(state.active).some(([blockX, blockY]) => blockX === x && blockY === y);
-}
-
-function settleSinnerAfterBoardChange(state: GameState): void {
-  if (state.status !== "playing") return;
-  if (sinnerCanOccupy(state, state.sinner.x, state.sinner.y)) return;
-  if (blinkSinnerUp(state)) return;
-  state.status = "cleared";
-}
-
-function updateGravity(state: GameState): void {
-  const elapsedSeconds = state.elapsedMs / 1000;
-  state.gravityMs = Math.max(80, 900 - elapsedSeconds * 12);
 }
 
 function seededRng(seed: number): RandomSource {

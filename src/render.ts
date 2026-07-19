@@ -7,7 +7,6 @@ import {
   GameState,
   getBlocks,
   getPreviewBlocks,
-  ghostPiece,
 } from "./tetris.js";
 import { requiredNode } from "./utils.js";
 
@@ -41,7 +40,7 @@ export function render(state: GameState): void {
   }
 
   // draw ghost
-  for (const [x, y] of getBlocks(ghostPiece(state))) {
+  for (const [x, y] of getBlocks(state.ghostPiece())) {
     if (y >= HIDDEN_ROWS) drawCell(x, y - HIDDEN_ROWS, state.active.kind, cellSize, 0.22);
   }
 
@@ -56,7 +55,7 @@ export function render(state: GameState): void {
   timer.textContent = (state.elapsedMs / 1000).toFixed(2);
   statusNode.textContent = state.status === "game-over" ? "Game over" : state.status === "cleared" ? "Cleared" : "Playing";
   queueNode.replaceChildren(...state.queue.slice(0, 5).map(renderQueuePiece));
-  holdNode.replaceChildren(state.hold === null ? renderEmptyPreview() : renderQueuePiece(state.hold));
+  holdNode.replaceChildren(state.holdPiece === null ? renderEmptyPreview() : renderQueuePiece(state.holdPiece));
 }
 
 function drawCell(x: number, visibleY: number, cell: Cell, size: number, alpha: number): void {
