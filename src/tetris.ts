@@ -235,11 +235,6 @@ export function hardDrop(state: GameState): number {
   return distance;
 }
 
-export function softDrop(state: GameState): boolean {
-  const dropped = move(state, 0, 1);
-  return dropped;
-}
-
 export function tick(state: GameState, deltaMs: number, nowMs = performance.now()): void {
   if (state.status !== "playing") return;
   if (state.startedAt === 0) state.startedAt = nowMs;

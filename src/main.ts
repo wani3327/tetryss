@@ -4,24 +4,32 @@ import {
   hold,
   move,
   rotate,
-  softDrop,
   tick,
 } from "./tetris.js";
 import { render } from "./render.js";
 
+const DAS = 133;
+const ARR = 10;
+const SDF = 0;
+
 const state = createGame();
 let lastFrame = performance.now();
 
+let inputState: {
+ key: string | null;
+ when: number;
+ state: number;
+} = {key: null, when: lastFrame, state: 0};
+
 window.addEventListener("keydown", (event) => {
+  if (event.repeat) return;
   switch (event.key) {
     case "ArrowLeft":
-      move(state, -1, 0);
-      break;
     case "ArrowRight":
-      move(state, 1, 0);
-      break;
     case "ArrowDown":
-      softDrop(state);
+      console.log(event.key);
+      inputState = {key: event.key, when: lastFrame, state: 0};
+      handleMove(0);
       break;
     case " ":
       hardDrop(state);
@@ -45,7 +53,48 @@ window.addEventListener("keydown", (event) => {
   event.preventDefault();
 });
 
+window.addEventListener("keyup", (event) => {
+  inputState = {key: null, when: lastFrame, state: 0};
+});
+
+function handleMove(now: number) {
+  switch (inputState.key) {
+    case "ArrowLeft":
+      foo(() => move(state, -1, 0), DAS, ARR);
+      break;
+    case "ArrowRight":
+      foo(() => move(state, 1, 0), DAS, ARR);
+      break;
+    case "ArrowDown":
+      foo(() => move(state, 0, 1), 0, SDF);
+      break;
+    default:
+      return;
+  }
+
+  function foo(action: () => void, das: number, arr: number) {
+    switch (inputState.state) {
+      case 0:
+      action();
+      inputState.state = 1;
+      break;
+    case 1:
+      if (now - inputState.when > das) {
+        inputState.state = 2;
+        inputState.when += DAS;
+      }
+      break;
+    case 2:
+      while (now - inputState.when > arr) {
+        action();
+        inputState.when += ARR;
+      }
+    }
+  }
+}
+
 function frame(now: number): void {
+  handleMove(now);
   tick(state, now - lastFrame, now);
   lastFrame = now;
   render(state);
