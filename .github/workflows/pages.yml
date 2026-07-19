@@ -36,10 +36,11 @@ jobs:
 
       - name: Stage site
         run: |
-          mkdir -p public/dist public/src
+          mkdir -p public/dist public/src public/resource
           cp index.html public/
           cp dist/*.js dist/*.js.map public/dist/
           cp src/styles.css public/src/
+          cp resource/* public/resource
           touch public/.nojekyll
 
       - name: Upload artifact

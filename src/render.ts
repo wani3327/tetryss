@@ -28,6 +28,9 @@ const colors: Record<Exclude<Cell, null>, string> = {
   cheese: "#7b6352",
 };
 
+const sinner_sprite = new Image();
+sinner_sprite.src = 'resource/스피키.webp';
+
 export function render(state: GameState): void {
   const cellSize = canvas.width / BOARD_WIDTH; // grid cell size by pixel
   context.clearRect(0, 0, canvas.width, canvas.height);
@@ -87,13 +90,15 @@ function drawGrid(size: number): void {
 function drawSinner(positionX: number, positionY: number, size: number): void {
   const visibleY = positionY - HIDDEN_ROWS;
   if (visibleY < 0 || visibleY >= BOARD_HEIGHT) return;
-  const centerX = positionX * size + size / 2;
-  const centerY = visibleY * size + size / 2;
+  const centerX = positionX * size;
+  const centerY = visibleY * size;
+
   context.save();
-  context.fillStyle = "#f8f6f2";
-  context.beginPath();
-  context.arc(centerX, centerY, size * 0.38, 0, Math.PI * 2);
-  context.fill();
+  context.drawImage(sinner_sprite, centerX, centerY, size, size);
+  // context.fillStyle = "#f8f6f2";
+  // context.beginPath();
+  // context.arc(centerX, centerY, size * 0.38, 0, Math.PI * 2);
+  // context.fill();
   context.restore();
 }
 

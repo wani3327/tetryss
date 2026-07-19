@@ -390,8 +390,6 @@ const I_KICKS: Record<string, ReadonlyArray<readonly [number, number]>> = {
   "0>3": [[0, 0], [-1, 0], [2, 0], [-1, -2], [2, 1]],
 };
 
-
-
 export function createEmptyBoard(): Cell[][] {
   return Array.from({ length: TOTAL_HEIGHT }, () => Array<Cell>(BOARD_WIDTH).fill(null));
 }
@@ -434,13 +432,9 @@ export function canPlace(board: Cell[][], piece: ActivePiece): boolean {
   });
 }
 
-
 function spawnPiece(kind: PieceKind): ActivePiece {
   return { kind, x: SPAWN_X[kind], y: 0, rotation: 0 };
 }
-
-
-
 
 function shuffledBag(rng: RandomSource): PieceKind[] {
   const bag = [...PIECES];
