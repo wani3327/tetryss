@@ -18,14 +18,14 @@ const queueNode = requiredNode(document.querySelector<HTMLElement>("#queue"), "q
 const holdNode = requiredNode(document.querySelector<HTMLElement>("#hold"), "hold");
 
 const colors: Record<Exclude<Cell, null>, string> = {
-  I: "#46c7d9",
-  J: "#416ad9",
-  L: "#d98430",
-  O: "#dfc23a",
-  S: "#5fc76d",
-  T: "#a55ad9",
-  Z: "#d95757",
-  cheese: "#7b6352",
+  I: "#3ecfd0",
+  J: "#3252b8",
+  L: "#d56b1f",
+  O: "#e0b926",
+  S: "#4fb34e",
+  T: "#9d3fb5",
+  Z: "#cf3838",
+  cheese: "#5a4136",
 };
 
 const sinner_sprite = new Image();
@@ -132,4 +132,3 @@ function renderEmptyPreview(): HTMLElement {
   node.className = "piece-preview empty";
   return node;
 }
-

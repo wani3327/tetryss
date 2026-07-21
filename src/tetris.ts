@@ -38,6 +38,7 @@ export class GameState {
   queue: PieceKind[];
   bag: PieceKind[];
   status: GameStatus;
+  hardMode: boolean;
   startedAt: number;
   elapsedMs: number;
   lockDelayMs: number;
@@ -46,8 +47,8 @@ export class GameState {
   lockAccumulatorMs: number;
   rng: RandomSource;
 
-  constructor(seed = Date.now()) {
-    this.rng = seededRng(seed);
+  constructor(hardmode: boolean) {
+    this.rng = seededRng(Date.now());
     this.board = createCheeseBoard(this.rng);
     this.sinner = spawnSinner();
     this.holdPiece = null;
@@ -55,6 +56,7 @@ export class GameState {
     this.queue = [];
     this.bag = [];
     this.status = "playing";
+    this.hardMode = hardmode;
     this.startedAt = 0;
     this.elapsedMs = 0;
     this.lockDelayMs = 500;
@@ -189,6 +191,8 @@ export class GameState {
     if (!this.sinnerIsGrounded() || sinner.walkAccumulatorMs < 260) return;
     sinner.walkAccumulatorMs = 0;
 
+    if (this.hardMode && this.tryHardModeSinnerAction()) return;
+
     if (!this.tryWalkSinner(sinner.direction)) {
       sinner.direction = sinner.direction === 1 ? -1 : 1;
       this.tryWalkSinner(sinner.direction);
@@ -262,6 +266,62 @@ export class GameState {
     }
 
     return false;
+  }
+
+  tryHardModeSinnerAction(): boolean {
+    const directions = [this.sinner.direction, (this.sinner.direction === 1 ? -1 : 1) as -1 | 1];
+
+    for (const direction of directions) {
+      if (this.tryClimbSinner(direction)) return true;
+    }
+
+    for (const direction of directions) {
+      const stepX = this.sinner.x + direction;
+      if (this.hasLockedTile(stepX, this.sinner.y) && this.breakLockedTile(stepX, this.sinner.y - 1)) {
+        this.sinner.direction = direction;
+        return true;
+      }
+    }
+
+    for (const [x, y] of [
+      [this.sinner.x, this.sinner.y - 1],
+      [this.sinner.x + this.sinner.direction, this.sinner.y],
+      [this.sinner.x - this.sinner.direction, this.sinner.y],
+    ] as const) {
+      if (this.breakLockedTile(x, y)) return true;
+    }
+
+    return false;
+  }
+
+  tryClimbSinner(direction: -1 | 1): boolean {
+    const { x, y } = this.sinner;
+    const nextX = x + direction;
+    const nextY = y - 1;
+    if (
+      !this.sinnerCanOccupy(nextX, y) &&
+      this.sinnerCanOccupy(nextX, nextY) &&
+      !this.activeOccupies(nextX, nextY)
+    ) {
+      this.sinner.x = nextX;
+      this.sinner.y = nextY;
+      this.sinner.direction = direction;
+      return true;
+    }
+
+    return false;
+  }
+
+  breakLockedTile(x: number, y: number): boolean {
+    if (!this.hasLockedTile(x, y) || this.activeOccupies(x, y)) return false;
+    this.board[y]![x] = null;
+    this.settleSinnerAfterBoardChange();
+    return true;
+  }
+
+  hasLockedTile(x: number, y: number): boolean {
+    if (x < 0 || x >= BOARD_WIDTH || y < HIDDEN_ROWS || y >= TOTAL_HEIGHT) return false;
+    return this.board[y]?.[x] !== null;
   }
 
   sinnerCanOccupy(x: number, y: number): boolean {

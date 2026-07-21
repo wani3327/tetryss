@@ -2,12 +2,14 @@ import {
   GameState,
 } from "./tetris.js";
 import { render } from "./render.js";
+import { requiredNode } from "./utils.js";
 
 const DAS = 133;
 const ARR = 10;
 const SDF = 0;
 
-const state = new GameState();
+let state = new GameState(false);
+const hardModeToggle = requiredNode(document.querySelector<HTMLInputElement>("#hard-mode"), "hard mode toggle");
 let lastFrame = performance.now();
 
 let inputState: {
@@ -15,6 +17,10 @@ let inputState: {
  when: number;
  state: number;
 } = {key: null, when: lastFrame, state: 0};
+
+hardModeToggle.addEventListener("change", () => {
+  state = new GameState(hardModeToggle.checked);
+});
 
 window.addEventListener("keydown", (event) => {
   if (event.repeat) return;
